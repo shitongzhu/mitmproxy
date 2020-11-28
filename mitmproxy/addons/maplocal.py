@@ -121,7 +121,7 @@ class MapLocal:
             if os.path.exists(ctx.options.map_local_file):
                 f = open(ctx.options.map_local_file, 'r')
                 for line in f:
-                    url, local_path = line.split(',')
+                    url, local_path = line.rsplit(',', 1)
                     url = url.strip()
                     local_path = local_path.strip()
                     print(url, local_path)
@@ -174,33 +174,44 @@ class MapLocal:
                     return
 
         # wzj
-        for url2, local_path in self.non_regex_replacements.items():
-            ctx.log.debug("Comparing %s and %s" % (url, url2))
-            if url == "http://" + url2 or url == "https://" + url2 or url == "http://" + url2 + "/" or url == "https://" + url2 + "/":
-                ctx.log.info("Serving %s with local file %s" % (url, local_path))
-                all_candidates.append(local_path)
-                if os.path.isfile(local_path):
-                    headers = {
-                        "Server": version.MITMPROXY
-                    }
-                    mimetype = mimetypes.guess_type(local_path)[0]
-                    if mimetype:
-                        headers["Content-Type"] = mimetype
+        #parts = urllib.parse.urlparse(url)
+        #netloc = parts[1]
+        #path = parts[2]
+        #params = parts[3]
+        #query = parts[4]
+        #fragment = parts[5]
 
-                    try:
-                        with open(local_path) as f:
-                            contents = f.read()
-                    except OSError as e:
-                        ctx.log.warn(f"Could not read file: {e}")
-                        continue
+        #if path in {'', '/'} and params == '' and query == '' and fragment == '' and netloc in self.non_regex_replacements:
+        #url_id = netloc + path
+        raw_url = flow.request.url
 
-                    flow.response = http.HTTPResponse.make(
-                        200,
-                        contents,
-                        headers
-                    )
-                    # only set flow.response once, for the first matching rule
+        ctx.log.info("Checking URL: %s" % raw_url)
+        if raw_url in self.non_regex_replacements:
+            local_path = self.non_regex_replacements[raw_url]
+            ctx.log.info("Serving %s with local file %s" % (raw_url, local_path))
+            all_candidates.append(local_path)
+            if os.path.isfile(local_path):
+                headers = {
+                    "Server": version.MITMPROXY
+                }
+                mimetype = mimetypes.guess_type(local_path)[0]
+                if mimetype:
+                    headers["Content-Type"] = mimetype
+
+                try:
+                    with open(local_path) as f:
+                        contents = f.read()
+                except OSError as e:
+                    ctx.log.warn(f"Could not read file: {e}")
                     return
+
+                flow.response = http.HTTPResponse.make(
+                    200,
+                    contents,
+                    headers
+                )
+                # only set flow.response once, for the first matching rule
+                return
 
         if all_candidates:
             flow.response = http.HTTPResponse.make(404)
