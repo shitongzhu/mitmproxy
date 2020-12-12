@@ -10,6 +10,8 @@ from werkzeug.security import safe_join
 from mitmproxy import ctx, exceptions, flowfilter, http, version
 from mitmproxy.utils.spec import parse_spec
 
+HOME_DIR = os.getenv("HOME")
+
 
 class MapLocalSpec(typing.NamedTuple):
     matches: flowfilter.TFilter
@@ -104,6 +106,14 @@ class MapLocal:
                 www.cnn.com, /home/user/www.cnn.com/index.html
             """
         )
+        loader.add_option(
+            "use_modified", bool, False,
+            """
+            This flag specifies whether modified local files should
+            be mapped to.
+            """
+        )
+
 
     def configure(self, updated):
         if "map_local" in updated:
@@ -122,7 +132,11 @@ class MapLocal:
                 f = open(ctx.options.map_local_file, 'r')
                 for line in f:
                     line = line.strip()
-                    final_url, final_domain, local_path = line.rsplit(',', 2)
+                    original_domain, final_url = line.split(',', 1)
+                    if ctx.options.use_modified:
+                        local_path = HOME_DIR + '/rendering_stream/html/modified_' + original_domain + '.html'
+                    else:
+                        local_path = HOME_DIR + '/rendering_stream/html/' + original_domain + '.html'
                     print("Adding mapping: %s --> %s" % (final_url, local_path))
                     self.non_regex_replacements[final_url] = local_path
                 f.close()
