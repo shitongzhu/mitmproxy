@@ -113,6 +113,13 @@ class MapLocal:
             be mapped to.
             """
         )
+        loader.add_option(
+            "eval_mode", bool, False,
+            """
+            This flag specifies whether we are now evaluating the
+            web pages.
+            """
+        )
 
 
     def configure(self, updated):
@@ -134,9 +141,15 @@ class MapLocal:
                     line = line.strip()
                     original_domain, final_url = line.split(',', 1)
                     if ctx.options.use_modified:
-                        local_path = HOME_DIR + '/rendering_stream/html/modified_' + original_domain + '.html'
+                        if ctx.options.eval_mode:
+                            local_path = HOME_DIR + '/rendering_stream/eval_html/' + original_domain + '.html'
+                        else:
+                            local_path = HOME_DIR + '/rendering_stream/html/modified_' + original_domain + '.html'
                     else:
-                        local_path = HOME_DIR + '/rendering_stream/html/' + original_domain + '.html'
+                        if ctx.options.eval_mode:
+                            local_path = HOME_DIR + '/rendering_stream/eval_html/original_' + original_domain + '.html'
+                        else:
+                            local_path = HOME_DIR + '/rendering_stream/html/' + original_domain + '.html'
                     print("Adding mapping: %s --> %s" % (final_url, local_path))
                     self.non_regex_replacements[final_url] = local_path
                 f.close()
