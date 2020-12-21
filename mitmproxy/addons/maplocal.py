@@ -3,6 +3,7 @@ import os
 import re
 import typing
 import urllib.parse
+from urllib.parse import urlparse
 from pathlib import Path
 
 from werkzeug.security import safe_join
@@ -85,7 +86,8 @@ def file_candidates(url: str, spec: MapLocalSpec) -> typing.List[Path]:
 class MapLocal:
     def __init__(self):
         self.replacements: typing.List[MapLocalSpec] = []
-        self.non_regex_replacements: typing.Dict[str, str] = {}
+        self.non_regex_html_replacements: typing.Dict[str, str] = {}
+        self.non_regex_url_replacements: typing.Dict[str, str] = {}
 
     def load(self, loader):
         loader.add_option(
@@ -107,6 +109,15 @@ class MapLocal:
             """
         )
         loader.add_option(
+            "url_map_local_file", typing.Optional[str], None,
+            """
+            A file containing the mapping between original and perturbed url.
+            Only single page url to local file mapping is allowed.
+            Example:
+                www.cnn.com, www.cnn.com/1.js
+            """
+        )
+        loader.add_option(
             "use_modified", bool, False,
             """
             This flag specifies whether modified local files should
@@ -118,6 +129,12 @@ class MapLocal:
             """
             This flag specifies whether we are now evaluating the
             web pages.
+            """
+        )
+        loader.add_option(
+            "url_id", typing.Optional[str], None, 
+            """
+            This specifies the URL ID.
             """
         )
 
@@ -142,19 +159,36 @@ class MapLocal:
                     original_domain, final_url = line.split(',', 1)
                     if ctx.options.use_modified:
                         if ctx.options.eval_mode:
-                            local_path = HOME_DIR + '/rendering_stream/eval_html/' + original_domain + '.html'
+                            local_path = HOME_DIR + '/rendering_stream/eval_html/%s_URL_%s.html' % (original_domain, ctx.options.url_id)
                         else:
-                            local_path = HOME_DIR + '/rendering_stream/html/modified_' + original_domain + '.html'
+                            local_path = HOME_DIR + '/rendering_stream/html/original_' + original_domain + '.html'
                     else:
                         if ctx.options.eval_mode:
                             local_path = HOME_DIR + '/rendering_stream/eval_html/original_' + original_domain + '.html'
                         else:
                             local_path = HOME_DIR + '/rendering_stream/html/' + original_domain + '.html'
-                    print("Adding mapping: %s --> %s" % (final_url, local_path))
-                    self.non_regex_replacements[final_url] = local_path
+                    print("Adding HTML mapping: %s --> %s" % (final_url, local_path))
+                    self.non_regex_html_replacements[final_url] = local_path
                 f.close()
             else:
                 raise exceptions.OptionsError("Cannot find map_local_file: %s" % ctx.options.map_local_file)
+        # zst
+        if "url_map_local_file" in updated:
+            if os.path.exists(ctx.options.url_map_local_file):
+                f = open(ctx.options.url_map_local_file, 'r')
+                for line in f:
+                    line = line.strip()
+                    original_url, perturbed_url = line.split(',', 1)
+                    original_scheme = urlparse(original_url)[0]
+                    perturbed_components = urlparse(perturbed_url)
+                    if perturbed_components[0] == '':
+                        perturbed_components._replace(scheme=original_scheme)
+                        perturbed_url = perturbed_components.geturl()
+                    print("Adding URL mapping: %s --> %s" % (perturbed_url, original_url))
+                    self.non_regex_url_replacements[perturbed_url] = original_url
+                f.close()
+            else:
+                raise exceptions.OptionsError("Cannot find url_map_local_file: %s" % ctx.options.url_map_local_file)
 
     def request(self, flow: http.HTTPFlow) -> None:
         if flow.reply and flow.reply.has_message:
@@ -199,8 +233,8 @@ class MapLocal:
                     # only set flow.response once, for the first matching rule
                     return
         
-        if url in self.non_regex_replacements:
-            local_path = self.non_regex_replacements[url]
+        if url in self.non_regex_html_replacements:
+            local_path = self.non_regex_html_replacements[url]
             ctx.log.info("Serving %s with local file %s" % (url, local_path))
             all_candidates.append(local_path)
             if os.path.isfile(local_path):
@@ -225,6 +259,15 @@ class MapLocal:
                 )
                 # only set flow.response once, for the first matching rule
                 return
+
+        if url in self.non_regex_url_replacements:
+            local_path = self.non_regex_url_replacements[url]
+            ctx.log.info("Serving %s with original URL %s" % (url, local_path))
+
+            flow.request.url = self.non_regex_url_replacements[url]
+
+            return
+
 
         if all_candidates:
             flow.response = http.HTTPResponse.make(404)
