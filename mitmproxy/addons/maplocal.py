@@ -159,7 +159,8 @@ class MapLocal:
                     original_domain, final_url = line.split(',', 1)
                     if ctx.options.use_modified:
                         if ctx.options.eval_mode:
-                            local_path = HOME_DIR + '/rendering_stream/eval_html/%s_URL_%s.html' % (original_domain, ctx.options.url_id)
+                            original_domain, strategy = original_domain.split('_')
+                            local_path = HOME_DIR + '/rendering_stream/eval_html/%s_URL_%s_%s.html' % (original_domain, ctx.options.url_id, strategy)
                         else:
                             local_path = HOME_DIR + '/rendering_stream/html/original_' + original_domain + '.html'
                     else:
